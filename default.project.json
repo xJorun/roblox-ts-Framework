@@ -1,0 +1,59 @@
+{
+	"name": "Framework",
+	"tree": {
+		"$className": "DataModel",
+
+		"ReplicatedStorage": {
+			"rbxts_include": {
+				"$path": "include",
+			"node_modules": {
+				"$className": "Folder",
+				"@rbxts": {
+					"$path": "node_modules/@rbxts"
+				},
+				"@rbxts-js": {
+					"$path": "node_modules/@rbxts-js"
+				}
+			}
+			},
+			"Shared": {
+				"$path": "out/shared"
+			}
+		},
+
+		"ServerScriptService": {
+			"Server": {
+				"$path": "out/server"
+			}
+		},
+
+		"StarterPlayer": {
+			"StarterPlayerScripts": {
+				"Client": {
+					"$path": "out/client"
+				}
+			}
+		},
+
+		"Workspace": {
+			"$properties": {
+				"FilteringEnabled": true
+			}
+		},
+
+		"Lighting": {
+			"$properties": {
+				"Ambient": [0, 0, 0],
+				"Brightness": 2,
+				"GlobalShadows": true,
+				"Technology": "Voxel"
+			}
+		},
+
+		"SoundService": {
+			"$properties": {
+				"RespectFilteringEnabled": true
+			}
+		}
+	}
+}
