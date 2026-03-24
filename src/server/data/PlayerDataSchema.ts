@@ -21,6 +21,21 @@ export interface InventoryData {
 
 export const CURRENT_DATA_VERSION = 1;
 
+type MigrationFn = (data: PlayerData) => void;
+
+const DATA_MIGRATIONS: MigrationFn[] = [];
+
+export function migratePlayerData(data: PlayerData): PlayerData {
+	while (data.version < CURRENT_DATA_VERSION) {
+		const migration = DATA_MIGRATIONS[data.version - 1];
+		if (migration) {
+			migration(data);
+		}
+		data.version++;
+	}
+	return data;
+}
+
 export function createDefaultPlayerData(): PlayerData {
 	return {
 		version: CURRENT_DATA_VERSION,
@@ -32,8 +47,8 @@ export function createDefaultPlayerData(): PlayerData {
 			playTime: 0,
 		},
 		inventory: {
-			ownedAbilities: ["fireball", "heal"],
-			equippedAbilities: ["fireball", "heal"],
+			ownedAbilities: ["fireball", "heal", "dash_strike"],
+			equippedAbilities: ["fireball", "heal", "dash_strike"],
 		},
 	};
 }

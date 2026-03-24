@@ -1,5 +1,4 @@
 import { ReplicatedStorage } from "@rbxts/services";
-import { Logger } from "shared/core/Logger";
 import {
 	ClientToServer,
 	ServerToClient,
@@ -13,10 +12,8 @@ const FOLDER_NAME = "Remotes";
 
 export class ClientNetwork {
 	private readonly events = new Map<string, RemoteEvent>();
-	private readonly log = new Logger("ClientNetwork");
 
 	initialize(): void {
-		this.log.info("Waiting for remotes...");
 		const folder = ReplicatedStorage.WaitForChild(FOLDER_NAME) as Folder;
 
 		for (const [remoteName] of pairs(ClientToServer)) {
@@ -28,8 +25,6 @@ export class ClientNetwork {
 			const remote = folder.WaitForChild(remoteName as string) as RemoteEvent;
 			this.events.set(remoteName as string, remote);
 		}
-
-		this.log.info(`Resolved ${this.events.size()} remotes`);
 	}
 
 	fireServer<K extends ClientEventName>(eventName: K, ...args: ClientEventArgs<K>): void {
@@ -45,7 +40,11 @@ export class ClientNetwork {
 		const remote = this.events.get(eventName as string);
 		assert(remote !== undefined, `Remote not found: ${eventName as string}`);
 		return remote.OnClientEvent.Connect((...rawArgs: unknown[]) => {
-			handler(...(rawArgs as unknown as ServerEventArgs<K>));
+			handler(...this.deserializeServerArgs<K>(rawArgs));
 		});
+	}
+
+	private deserializeServerArgs<K extends ServerEventName>(rawArgs: unknown[]): ServerEventArgs<K> {
+		return rawArgs as unknown as ServerEventArgs<K>;
 	}
 }

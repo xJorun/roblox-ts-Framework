@@ -40,6 +40,12 @@ export class Logger {
 		}
 	}
 
+	error(message: string, ...args: unknown[]): void {
+		if (this.getLevel() <= LogLevel.Error) {
+			warn(`[ERROR][${this.prefix}] ${message}`, ...args);
+		}
+	}
+
 	fatal(message: string): never {
 		error(`[${this.prefix}] ${message}`);
 	}

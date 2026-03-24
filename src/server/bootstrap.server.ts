@@ -1,11 +1,11 @@
-import { Logger, setGlobalLogLevel, LogLevel } from "shared/core/Logger";
+import { setGlobalLogLevel, LogLevel } from "shared/core/Logger";
 import { GameConfig } from "shared/config/GameConfig";
 
 import { ServerNetwork } from "server/networking/ServerNet";
 import { ServiceRegistry } from "server/core/ServiceRegistry";
 import { CombatValidator } from "server/validation/CombatValidator";
 import { createRateLimiter } from "server/validation/RateLimiter";
-import { registerTypeCheck, createTypeCheckMiddleware, t } from "server/validation/TypeChecker";
+import { registerTypeChecks, createTypeCheckMiddleware, t } from "server/validation/TypeChecker";
 
 import { DataService } from "server/services/data/DataService";
 import { PlayerService } from "server/services/players/PlayerService";
@@ -13,18 +13,13 @@ import { CombatService } from "server/services/combat/CombatService";
 import { AbilityService } from "server/services/abilities/AbilityService";
 import { ReplicationService } from "server/services/replication/ReplicationService";
 
-const log = new Logger("Server");
 setGlobalLogLevel(LogLevel.Info);
 
-log.info("Bootstrapping server...");
-
-// --- Infrastructure ---
 const network = new ServerNetwork();
 const registry = new ServiceRegistry();
 const combatValidator = new CombatValidator();
 
-// --- Runtime type checks for incoming remotes (anti-exploit) ---
-registerTypeCheck(
+registerTypeChecks(
 	"RequestAbility",
 	t.interface({
 		abilityId: t.string,
@@ -35,9 +30,8 @@ registerTypeCheck(
 	}),
 );
 
-registerTypeCheck("RequestAction", t.string);
+registerTypeChecks("RequestAction", t.string);
 
-// --- Middleware pipeline ---
 network.use(
 	createRateLimiter({
 		maxRequests: GameConfig.network.rateLimitMaxRequests,
@@ -46,14 +40,22 @@ network.use(
 );
 network.use(createTypeCheckMiddleware());
 
-// --- Services ---
 const dataService = new DataService();
 const playerService = new PlayerService(network, dataService);
 const combatService = new CombatService(network, playerService);
-const abilityService = new AbilityService(network, combatService, combatValidator);
+const abilityService = new AbilityService(network, combatService, combatValidator, dataService);
 const replicationService = new ReplicationService(network, playerService);
 
-// --- Register ---
+combatService.onEntityKilled.Connect((entityId, killerId) => {
+	playerService.incrementDeaths(entityId);
+	playerService.incrementKills(killerId);
+	playerService.scheduleRespawn(entityId);
+});
+
+playerService.onPlayerRemoving.Connect((player) => {
+	combatValidator.clearPlayerCooldowns(tostring(player.UserId));
+});
+
 registry
 	.register(dataService)
 	.register(playerService)
@@ -61,8 +63,9 @@ registry
 	.register(abilityService)
 	.register(replicationService);
 
-// --- Boot ---
 network.initialize();
 registry.start();
 
-log.info("Server ready");
+game.BindToClose(() => {
+	registry.shutdown();
+});

@@ -4,10 +4,11 @@ import { Service } from "server/core/Service";
 import { ServerNetwork } from "server/networking/ServerNet";
 import { PlayerService } from "server/services/players/PlayerService";
 import { Logger } from "shared/core/Logger";
-import { AbilityDefinition, AbilityEffectType, AppliedEffect } from "shared/types/Ability";
-import { DamageType, DamageInstance, StatusEffectType, StatusEffect } from "shared/types/Combat";
+import { AbilityDefinition, AbilityEffectType, AppliedEffect, TargetType } from "shared/types/Ability";
+import { DamageType, DamageInstance, StatusEffect } from "shared/types/Combat";
 import { CombatConfig } from "shared/config/CombatConfig";
-import { calculateDamage, clampHealth, pruneExpiredEffects } from "shared/gameplay/combat/CombatMath";
+import { calculateDamage } from "shared/gameplay/combat/CombatMath";
+import { getCharacterPosition } from "shared/util/InstanceUtil";
 
 export interface AbilityApplicationResult {
 	effects: AppliedEffect[];
@@ -29,18 +30,22 @@ export class CombatService implements Service {
 		caster: Player,
 		ability: AbilityDefinition,
 		targetId: string | undefined,
+		direction: Vector3 | undefined,
+		position: Vector3 | undefined,
 	): AbilityApplicationResult {
-		const applied: AppliedEffect[] = [];
 		const casterId = tostring(caster.UserId);
+		const targets = this.resolveTargets(caster, ability, targetId, direction, position);
+		const applied: AppliedEffect[] = [];
 
 		for (const effect of ability.effects) {
 			switch (effect.effectType) {
 				case AbilityEffectType.Damage: {
-					if (targetId !== undefined) {
-						const dmg = this.applyDamage(casterId, targetId, effect.value, DamageType.Magical);
+					for (const tid of targets) {
+						if (tid === casterId) continue;
+						const dmg = this.applyDamage(casterId, tid, effect.value, DamageType.Magical);
 						if (dmg) {
 							applied.push({
-								targetEntityId: targetId,
+								targetEntityId: tid,
 								effectType: AbilityEffectType.Damage,
 								value: dmg.amount,
 							});
@@ -49,38 +54,49 @@ export class CombatService implements Service {
 					break;
 				}
 				case AbilityEffectType.Heal: {
-					this.applyHeal(casterId, effect.value);
-					applied.push({
-						targetEntityId: casterId,
-						effectType: AbilityEffectType.Heal,
-						value: effect.value,
-					});
-					break;
-				}
-				case AbilityEffectType.StatusApply: {
-					const effectTarget = targetId ?? casterId;
-					if (effect.duration !== undefined) {
-						this.applyStatusEffect(effectTarget, {
-							id: `${ability.id}_${os.clock()}`,
-							effectType: StatusEffectType.Burn,
-							value: effect.value,
-							duration: effect.duration,
-							startTime: os.clock(),
-						});
+					for (const tid of targets) {
+						this.playerService.applyHeal(tid, effect.value);
 						applied.push({
-							targetEntityId: effectTarget,
-							effectType: AbilityEffectType.StatusApply,
+							targetEntityId: tid,
+							effectType: AbilityEffectType.Heal,
 							value: effect.value,
 						});
 					}
 					break;
 				}
+				case AbilityEffectType.StatusApply: {
+					if (effect.duration === undefined || effect.statusType === undefined) break;
+					for (const tid of targets) {
+						const statusEffect: StatusEffect = {
+							id: `${ability.id}_${os.clock()}`,
+							effectType: effect.statusType,
+							value: effect.value,
+							duration: effect.duration,
+							startTime: os.clock(),
+						};
+						if (this.playerService.addStatusEffect(tid, statusEffect)) {
+							const targetPlayer = Players.GetPlayerByUserId(tonumber(tid) ?? 0);
+							if (targetPlayer) {
+								this.network.fireClient("EffectApplied", targetPlayer, tid, statusEffect);
+							}
+							applied.push({
+								targetEntityId: tid,
+								effectType: AbilityEffectType.StatusApply,
+								value: effect.value,
+							});
+						}
+					}
+					break;
+				}
 				case AbilityEffectType.Knockback: {
-					applied.push({
-						targetEntityId: targetId ?? casterId,
-						effectType: AbilityEffectType.Knockback,
-						value: effect.value,
-					});
+					for (const tid of targets) {
+						if (tid === casterId) continue;
+						applied.push({
+							targetEntityId: tid,
+							effectType: AbilityEffectType.Knockback,
+							value: effect.value,
+						});
+					}
 					break;
 				}
 			}
@@ -98,15 +114,19 @@ export class CombatService implements Service {
 		const targetState = this.playerService.getEntityState(targetEntityId);
 		if (!targetState || !targetState.alive) return undefined;
 
+		const casterState = this.playerService.getEntityState(sourceEntityId);
+		const attackMult = casterState?.attack ?? 1;
+		const defenseMult = targetState.defense;
+
 		const finalDamage = math.clamp(
-			calculateDamage(baseDamage, 1, 0),
+			calculateDamage(baseDamage, attackMult, defenseMult),
 			CombatConfig.minDamage,
 			CombatConfig.maxDamage,
 		);
 
-		targetState.health = clampHealth(targetState.health - finalDamage, targetState.maxHealth);
-		targetState.combatState.lastDamageTimestamp = os.clock();
-		targetState.combatState.isInCombat = true;
+		if (!this.playerService.applyDamage(targetEntityId, finalDamage)) return undefined;
+
+		this.playerService.addDamageDealt(sourceEntityId, finalDamage);
 
 		const damageInstance: DamageInstance = {
 			sourceEntityId,
@@ -117,10 +137,14 @@ export class CombatService implements Service {
 		};
 
 		this.onEntityDamaged.Fire(damageInstance);
-		this.broadcastDamage(damageInstance, targetEntityId);
 
-		if (targetState.health <= 0) {
-			targetState.alive = false;
+		const targetPlayer = Players.GetPlayerByUserId(tonumber(targetEntityId) ?? 0);
+		if (targetPlayer) {
+			this.network.fireClient("DamageApplied", targetPlayer, damageInstance);
+		}
+
+		const updatedState = this.playerService.getEntityState(targetEntityId);
+		if (updatedState && !updatedState.alive) {
 			this.onEntityKilled.Fire(targetEntityId, sourceEntityId);
 			this.log.info(`Entity ${targetEntityId} killed by ${sourceEntityId}`);
 		}
@@ -128,38 +152,66 @@ export class CombatService implements Service {
 		return damageInstance;
 	}
 
-	private applyHeal(entityId: string, amount: number): void {
-		const state = this.playerService.getEntityState(entityId);
-		if (!state || !state.alive) return;
+	private resolveTargets(
+		caster: Player,
+		ability: AbilityDefinition,
+		targetId: string | undefined,
+		direction: Vector3 | undefined,
+		position: Vector3 | undefined,
+	): string[] {
+		const casterId = tostring(caster.UserId);
 
-		state.health = clampHealth(state.health + amount, state.maxHealth);
+		switch (ability.targetType) {
+			case TargetType.Self:
+				return [casterId];
+			case TargetType.Single:
+				return targetId !== undefined ? [targetId] : [];
+			case TargetType.Direction:
+				return this.findDirectionTargets(caster, direction, ability.range);
+			case TargetType.Area:
+				return this.findAreaTargets(position, ability.range);
+		}
+
+		return [];
 	}
 
-	private applyStatusEffect(entityId: string, effect: StatusEffect): void {
-		const state = this.playerService.getEntityState(entityId);
-		if (!state) return;
+	private findDirectionTargets(caster: Player, direction: Vector3 | undefined, range: number): string[] {
+		if (!direction) return [];
+		const casterPos = getCharacterPosition(caster);
+		if (!casterPos) return [];
 
-		state.statusEffects = pruneExpiredEffects(state.statusEffects, os.clock());
-		if (state.statusEffects.size() >= CombatConfig.maxConcurrentStatusEffects) return;
+		const targets: string[] = [];
+		const dirUnit = direction.Unit;
 
-		state.statusEffects.push(effect);
+		for (const player of Players.GetPlayers()) {
+			if (player === caster) continue;
+			const targetPos = getCharacterPosition(player);
+			if (!targetPos) continue;
 
-		const target = Players.GetPlayerByUserId(tonumber(entityId) ?? 0);
-		if (target) {
-			this.network.fireClient("EffectApplied", target, entityId, effect);
+			const toTarget = targetPos.sub(casterPos);
+			if (toTarget.Magnitude > range) continue;
+
+			if (toTarget.Unit.Dot(dirUnit) > 0.5) {
+				targets.push(tostring(player.UserId));
+			}
 		}
+
+		return targets;
 	}
 
-	private broadcastDamage(damage: DamageInstance, targetEntityId: string): void {
-		const target = Players.GetPlayerByUserId(tonumber(targetEntityId) ?? 0);
-		if (target) {
-			this.network.fireClient("DamageApplied", target, damage);
-			this.network.fireClient(
-				"StateReplication",
-				target,
-				targetEntityId,
-				this.playerService.getEntityState(targetEntityId)!,
-			);
+	private findAreaTargets(position: Vector3 | undefined, range: number): string[] {
+		if (!position) return [];
+
+		const targets: string[] = [];
+		for (const player of Players.GetPlayers()) {
+			const targetPos = getCharacterPosition(player);
+			if (!targetPos) continue;
+
+			if (targetPos.sub(position).Magnitude <= range) {
+				targets.push(tostring(player.UserId));
+			}
 		}
+
+		return targets;
 	}
 }

@@ -1,4 +1,5 @@
 import { AbilityDefinition, AbilityEffectType, TargetType } from "shared/types/Ability";
+import { StatusEffectType } from "shared/types/Combat";
 
 export const CombatConfig = {
 	maxHitRange: 100,
@@ -18,7 +19,7 @@ export const ABILITY_DEFINITIONS: { readonly [id: string]: AbilityDefinition } =
 		targetType: TargetType.Single,
 		effects: [
 			{ effectType: AbilityEffectType.Damage, value: 25 },
-			{ effectType: AbilityEffectType.StatusApply, value: 5, duration: 3 },
+			{ effectType: AbilityEffectType.StatusApply, value: 5, duration: 3, statusType: StatusEffectType.Burn },
 		],
 	},
 	heal: {

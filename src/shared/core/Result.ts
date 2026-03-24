@@ -31,5 +31,5 @@ export function map<T, U, E>(result: Result<T, E>, fn: (value: T) => U): Result<
 	if (result.ok) {
 		return ok(fn(result.value));
 	}
-	return result as unknown as Result<U, E>;
+	return err(result.error);
 }

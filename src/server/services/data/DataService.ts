@@ -1,10 +1,12 @@
 import ProfileService from "@rbxts/profileservice";
 import type { Profile } from "@rbxts/profileservice/globals";
 import { Players } from "@rbxts/services";
+import { Signal } from "@rbxts/beacon";
 import { Service } from "server/core/Service";
 import { Logger } from "shared/core/Logger";
+import { Result, ok, err } from "shared/core/Result";
 import { GameConfig } from "shared/config/GameConfig";
-import { PlayerData, createDefaultPlayerData } from "server/data/PlayerDataSchema";
+import { PlayerData, createDefaultPlayerData, migratePlayerData } from "server/data/PlayerDataSchema";
 
 type PlayerProfile = Profile<PlayerData>;
 
@@ -12,7 +14,8 @@ export class DataService implements Service {
 	readonly name = "DataService";
 	private readonly log = new Logger("DataService");
 	private profileStore!: ReturnType<typeof ProfileService.GetProfileStore<PlayerData>>;
-	private profiles = new Map<Player, PlayerProfile>();
+	private readonly profiles = new Map<Player, PlayerProfile>();
+	readonly onAutoSave = new Signal<[]>();
 
 	onInit(): void {
 		this.profileStore = ProfileService.GetProfileStore<PlayerData>(
@@ -23,21 +26,35 @@ export class DataService implements Service {
 
 	onStart(): void {
 		Players.PlayerRemoving.Connect((player) => this.releaseProfile(player));
+
+		task.spawn(() => {
+			while (true) {
+				task.wait(GameConfig.data.autoSaveInterval);
+				this.onAutoSave.Fire();
+			}
+		});
 	}
 
-	loadProfile(player: Player): PlayerProfile | undefined {
+	onDestroy(): void {
+		for (const [, profile] of this.profiles) {
+			profile.Release();
+		}
+	}
+
+	loadProfile(player: Player): Result<PlayerProfile, string> {
 		const profile = this.profileStore.LoadProfileAsync(`Player_${player.UserId}`);
 		if (!profile) {
-			this.log.warn(`Failed to load profile for ${player.Name}`);
-			return undefined;
+			this.log.error(`Failed to load profile for ${player.Name}`);
+			return err(`Failed to load profile for ${player.Name}`);
 		}
 
 		profile.AddUserId(player.UserId);
+		migratePlayerData(profile.Data);
 		profile.Reconcile();
 
 		if (!player.IsDescendantOf(game)) {
 			profile.Release();
-			return undefined;
+			return err("Player left during profile load");
 		}
 
 		profile.ListenToRelease(() => {
@@ -49,7 +66,7 @@ export class DataService implements Service {
 
 		this.profiles.set(player, profile);
 		this.log.info(`Loaded profile for ${player.Name}`);
-		return profile;
+		return ok(profile);
 	}
 
 	getProfile(player: Player): PlayerProfile | undefined {
@@ -58,12 +75,6 @@ export class DataService implements Service {
 
 	getData(player: Player): PlayerData | undefined {
 		return this.profiles.get(player)?.Data;
-	}
-
-	getDataOrFail(player: Player): PlayerData {
-		const profile = this.profiles.get(player);
-		assert(profile !== undefined, `No profile loaded for ${player.Name}`);
-		return profile.Data;
 	}
 
 	releaseProfile(player: Player): void {

@@ -3,13 +3,11 @@ import { DamageInstance, StatusEffect } from "shared/types/Combat";
 import { CharacterState } from "shared/gameplay/characters/CharacterTypes";
 import { event, RemoteMarker } from "./NetTypes";
 
-// Client → Server: Requests and inputs only. The client asks; the server decides.
 export const ClientToServer = {
 	RequestAbility: event<[request: AbilityActivationRequest]>(),
 	RequestAction: event<[actionType: string]>(),
 };
 
-// Server → Client: Authoritative state, outcomes, and corrections.
 export const ServerToClient = {
 	AbilityOutcome: event<[result: AbilityOutcome]>(),
 	AbilityRejected: event<[sequenceId: number, reason: string]>(),

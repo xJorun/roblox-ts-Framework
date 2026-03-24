@@ -4,9 +4,9 @@ import { createRoot } from "@rbxts/react-roblox";
 import { Trove } from "@rbxts/trove";
 import { Controller } from "client/core/Controller";
 import { ClientNetwork } from "client/networking/ClientNet";
-import { Logger } from "shared/core/Logger";
 import { CharacterState } from "shared/gameplay/characters/CharacterTypes";
 import { ABILITY_DEFINITIONS } from "shared/config/CombatConfig";
+import { KEYBIND_CONFIG } from "shared/config/KeybindConfig";
 import { App } from "client/ui/App";
 import {
 	localHealth,
@@ -19,7 +19,6 @@ import {
 
 export class UIController implements Controller {
 	readonly name = "UIController";
-	private readonly log = new Logger("UIController");
 	private readonly trove = new Trove();
 	private localEntityId!: string;
 
@@ -56,8 +55,6 @@ export class UIController implements Controller {
 				}
 			}),
 		);
-
-		this.log.info("UI mounted");
 	}
 
 	private mountUI(): void {
@@ -81,19 +78,14 @@ export class UIController implements Controller {
 
 	private initAbilitySlots(): void {
 		const slots: AbilitySlotData[] = [];
-		const bindings: Array<[string, string]> = [
-			["fireball", "Q"],
-			["heal", "E"],
-			["dash_strike", "R"],
-		];
 
-		for (const [abilityId, keybind] of bindings) {
-			const def = ABILITY_DEFINITIONS[abilityId];
+		for (const entry of KEYBIND_CONFIG) {
+			const def = ABILITY_DEFINITIONS[entry.abilityId];
 			if (def) {
 				slots.push({
-					abilityId,
+					abilityId: entry.abilityId,
 					name: def.name,
-					keybind,
+					keybind: entry.label,
 					cooldownEnd: 0,
 					cooldownDuration: def.cooldown,
 				});

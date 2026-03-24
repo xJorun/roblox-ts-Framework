@@ -19,9 +19,7 @@ export class PredictionBuffer<T = unknown> {
 	}
 
 	acknowledge(sequenceId: number): void {
-		while (this.buffer.size() > 0 && this.buffer[0].sequenceId <= sequenceId) {
-			this.buffer.remove(0);
-		}
+		this.buffer = this.buffer.filter((entry) => entry.sequenceId > sequenceId);
 	}
 
 	reject(sequenceId: number): PredictionEntry<T> | undefined {

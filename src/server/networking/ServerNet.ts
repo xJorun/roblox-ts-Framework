@@ -25,8 +25,6 @@ export class ServerNetwork {
 	}
 
 	initialize(): void {
-		this.log.info("Creating remotes...");
-
 		for (const [remoteName] of pairs(ClientToServer)) {
 			const remote = new Instance("RemoteEvent");
 			remote.Name = remoteName as string;
@@ -42,7 +40,6 @@ export class ServerNetwork {
 		}
 
 		this.folder.Parent = ReplicatedStorage;
-		this.log.info(`Created ${this.clientEvents.size() + this.serverEvents.size()} remotes`);
 	}
 
 	use(middleware: MiddlewareFn): void {
@@ -66,7 +63,7 @@ export class ServerNetwork {
 
 			if (!this.runMiddleware(ctx)) return;
 
-			handler(player, ...(rawArgs as unknown as ClientEventArgs<K>));
+			handler(player, ...this.deserializeClientArgs<K>(rawArgs));
 		});
 	}
 
@@ -96,6 +93,10 @@ export class ServerNetwork {
 		for (const player of players) {
 			remote.FireClient(player, ...(args as unknown[]));
 		}
+	}
+
+	private deserializeClientArgs<K extends ClientEventName>(rawArgs: unknown[]): ClientEventArgs<K> {
+		return rawArgs as unknown as ClientEventArgs<K>;
 	}
 
 	private runMiddleware(ctx: MiddlewareContext): boolean {

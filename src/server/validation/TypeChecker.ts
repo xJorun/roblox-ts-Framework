@@ -3,25 +3,27 @@ import { MiddlewareFn } from "shared/networking/Middleware";
 import { Logger } from "shared/core/Logger";
 
 const log = new Logger("TypeChecker");
-const checkers = new Map<string, t.check<unknown>>();
+const checkerMap = new Map<string, t.check<unknown>[]>();
 
-export function registerTypeCheck(remoteName: string, checker: t.check<unknown>): void {
-	checkers.set(remoteName, checker);
+export function registerTypeChecks(remoteName: string, ...checkers: t.check<unknown>[]): void {
+	checkerMap.set(remoteName, checkers);
 }
 
 export function createTypeCheckMiddleware(): MiddlewareFn {
 	return (ctx) => {
-		const checker = checkers.get(ctx.remoteName);
-		if (!checker) return true;
+		const checkers = checkerMap.get(ctx.remoteName);
+		if (!checkers) return true;
 
-		if (ctx.args.size() === 0) {
-			log.warn(`Empty payload for ${ctx.remoteName} from ${ctx.player.Name}`);
+		if (ctx.args.size() < checkers.size()) {
+			log.warn(`Insufficient args for ${ctx.remoteName} from ${ctx.player.Name}`);
 			return false;
 		}
 
-		if (!checker(ctx.args[0])) {
-			log.warn(`Type validation failed for ${ctx.remoteName} from ${ctx.player.Name}`);
-			return false;
+		for (let i = 0; i < checkers.size(); i++) {
+			if (!checkers[i](ctx.args[i])) {
+				log.warn(`Type validation failed for ${ctx.remoteName} arg ${i} from ${ctx.player.Name}`);
+				return false;
+			}
 		}
 
 		return true;

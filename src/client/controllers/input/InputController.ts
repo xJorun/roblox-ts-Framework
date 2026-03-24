@@ -2,11 +2,10 @@ import { UserInputService } from "@rbxts/services";
 import { Signal } from "@rbxts/beacon";
 import { Trove } from "@rbxts/trove";
 import { Controller } from "client/core/Controller";
-import { Logger } from "shared/core/Logger";
+import { KEYBIND_CONFIG } from "shared/config/KeybindConfig";
 
 export class InputController implements Controller {
 	readonly name = "InputController";
-	private readonly log = new Logger("InputController");
 	private readonly trove = new Trove();
 	private readonly bindings = new Map<Enum.KeyCode, string>();
 
@@ -14,7 +13,9 @@ export class InputController implements Controller {
 	readonly onMovementInput = new Signal<[direction: Vector3]>();
 
 	onInit(): void {
-		this.registerDefaultBindings();
+		for (const entry of KEYBIND_CONFIG) {
+			this.bindings.set(entry.keyCode, entry.abilityId);
+		}
 	}
 
 	onStart(): void {
@@ -22,18 +23,10 @@ export class InputController implements Controller {
 			if (gameProcessed) return;
 			this.handleInput(input);
 		});
-
-		this.log.info("Input listening active");
 	}
 
 	bindAbility(keyCode: Enum.KeyCode, abilityId: string): void {
 		this.bindings.set(keyCode, abilityId);
-	}
-
-	private registerDefaultBindings(): void {
-		this.bindAbility(Enum.KeyCode.Q, "fireball");
-		this.bindAbility(Enum.KeyCode.E, "heal");
-		this.bindAbility(Enum.KeyCode.R, "dash_strike");
 	}
 
 	private handleInput(input: InputObject): void {

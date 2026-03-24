@@ -1,3 +1,5 @@
+import { StatusEffectType } from "./Combat";
+
 export enum TargetType {
 	Self = "Self",
 	Single = "Single",
@@ -16,6 +18,7 @@ export interface AbilityEffect {
 	effectType: AbilityEffectType;
 	value: number;
 	duration?: number;
+	statusType?: StatusEffectType;
 }
 
 export interface AbilityDefinition {

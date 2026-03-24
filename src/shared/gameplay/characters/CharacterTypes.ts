@@ -1,13 +1,15 @@
 import { EntityId, PlayerId } from "shared/core/Types";
-import { CombatState, StatusEffect, createDefaultCombatState } from "shared/types/Combat";
+import { CombatState, createDefaultCombatState } from "shared/types/Combat";
+import { GameConfig } from "shared/config/GameConfig";
 
 export interface CharacterState {
 	entityId: EntityId;
 	ownerId: PlayerId;
 	health: number;
 	maxHealth: number;
+	attack: number;
+	defense: number;
 	alive: boolean;
-	statusEffects: StatusEffect[];
 	combatState: CombatState;
 }
 
@@ -15,10 +17,11 @@ export function createDefaultCharacterState(entityId: EntityId, ownerId: PlayerI
 	return {
 		entityId,
 		ownerId,
-		health: 100,
-		maxHealth: 100,
+		health: GameConfig.defaultHealth,
+		maxHealth: GameConfig.defaultMaxHealth,
+		attack: 1,
+		defense: 0,
 		alive: true,
-		statusEffects: [],
 		combatState: createDefaultCombatState(),
 	};
 }

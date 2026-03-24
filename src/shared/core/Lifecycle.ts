@@ -10,4 +10,5 @@ export interface FrameworkModule {
 	readonly name: string;
 	onInit?(): void;
 	onStart?(): void;
+	onDestroy?(): void;
 }
