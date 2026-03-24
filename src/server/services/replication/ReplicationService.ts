@@ -31,12 +31,11 @@ export class ReplicationService implements Service {
 		const dirty = this.playerService.consumeDirtyEntities();
 		if (dirty.size() === 0) return;
 
-		for (const player of Players.GetPlayers()) {
-			const entityId = tostring(player.UserId);
-			const state = dirty.get(entityId);
-			if (!state) continue;
-
-			this.network.fireClient("StateReplication", player, entityId, state);
+		const players = Players.GetPlayers();
+		for (const [entityId, state] of dirty) {
+			for (const player of players) {
+				this.network.fireClient("StateReplication", player, entityId, state);
+			}
 		}
 	}
 
