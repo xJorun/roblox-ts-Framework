@@ -5,6 +5,7 @@ export const GameConfig = {
 	defaultMaxHealth: 100,
 	combatExitDelay: 5,
 	respawnDelay: 5,
+	replicationRange: 250,
 
 	network: {
 		rateLimitWindow: 1,
